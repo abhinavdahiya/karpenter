@@ -57,11 +57,13 @@ func (s *SingleNodeConsolidation) ComputeCommand(ctx context.Context, disruption
 	constrainedByBudgets := false
 	// binary search to find the maximum number of NodeClaims we can terminate
 	for i, candidate := range candidates {
+		logging.FromContext(ctx).Debugf("evaluating %s/%s (%d pods) candidate with cost %d", candidate.Name(), candidate.instanceType.Name, len(candidate.reschedulablePods), int(candidate.disruptionCost))
 		// If the disruption budget doesn't allow this candidate to be disrupted,
 		// continue to the next candidate. We don't need to decrement any budget
 		// counter since single node consolidation commands can only have one candidate.
 		if disruptionBudgetMapping[candidate.nodePool.Name] == 0 {
 			constrainedByBudgets = true
+			logging.FromContext(ctx).Debugf("skipping %s candidate due to budget", candidate.Name())
 			continue
 		}
 		if s.clock.Now().After(timeout) {
@@ -75,6 +77,8 @@ func (s *SingleNodeConsolidation) ComputeCommand(ctx context.Context, disruption
 			logging.FromContext(ctx).Errorf("computing consolidation %s", err)
 			continue
 		}
+
+		logging.FromContext(ctx).Debugf("consolidation result for %s candidate, %s", candidate.Name(), cmd)
 		if cmd.Action() == NoOpAction {
 			continue
 		}
