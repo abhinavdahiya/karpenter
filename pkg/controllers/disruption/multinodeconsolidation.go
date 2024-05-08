@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/samber/lo"
@@ -76,10 +77,14 @@ func (m *MultiNodeConsolidation) ComputeCommand(ctx context.Context, disruptionB
 	// This could be further configurable in the future.
 	maxParallel := lo.Clamp(len(disruptableCandidates), 0, 100)
 
+	logging.FromContext(ctx).Debugf("evaluating %d candidates: %s", maxParallel, strings.Join(lo.FilterMap(disruptableCandidates, func(c *Candidate, _ int) (string, bool) {
+		return fmt.Sprintf("%s/%s (%d) pods with cost %d", c.Name(), c.instanceType.Name, len(c.reschedulablePods), int(c.disruptionCost)), true
+	}), ","))
 	cmd, results, err := m.firstNConsolidationOption(ctx, disruptableCandidates, maxParallel)
 	if err != nil {
 		return Command{}, scheduling.Results{}, err
 	}
+	logging.FromContext(ctx).Debugf("consolidation result for multiple candidates, %s", cmd)
 
 	if cmd.Action() == NoOpAction {
 		// if there are no candidates because of a budget, don't mark
@@ -134,10 +139,16 @@ func (m *MultiNodeConsolidation) firstNConsolidationOption(ctx context.Context, 
 		mid := (min + max) / 2
 		candidatesToConsolidate := candidates[0 : mid+1]
 
+		logging.FromContext(ctx).Debugf("firstNConsolidationOption: evaluating [%d:%d] candidates: %s", min, max, strings.Join(lo.FilterMap(candidatesToConsolidate, func(c *Candidate, _ int) (string, bool) {
+			return fmt.Sprintf("%s/%s (%d) pods with cost %d", c.Name(), c.instanceType.Name, len(c.reschedulablePods), int(c.disruptionCost)), true
+		}), ","))
+
 		cmd, results, err := m.computeConsolidation(ctx, candidatesToConsolidate...)
 		if err != nil {
 			return Command{}, scheduling.Results{}, err
 		}
+
+		logging.FromContext(ctx).Debugf("firstNConsolidationOption: consolidation result for [%d:%d] candidates, %s", min, max, cmd)
 
 		// ensure that the action is sensical for replacements, see explanation on filterOutSameType for why this is
 		// required
